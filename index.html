@@ -104,13 +104,40 @@
 
   .material-row {
     display: grid;
-    grid-template-columns: 1fr 70px 30px;
-    gap: 8px;
+    grid-template-columns: 1fr 55px 14px 55px 30px;
+    gap: 6px;
     margin-bottom: 10px;
     align-items: center;
   }
-  .material-row select { font-size: 13px; }
-  .material-row input { text-align: center; }
+  .material-row select { font-size: 12.5px; }
+  .material-row input { text-align: center; font-size: 13px; padding: 11px 6px; }
+  .material-row .slash { text-align: center; color: var(--text-dim); font-size: 13px; }
+  .material-row .mat-name-readonly {
+    background: #f5f6f8;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 11px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .material-row input.plan-input {
+    background: #eef4ff;
+    color: var(--text-dim);
+  }
+  .material-row-labels {
+    display: grid;
+    grid-template-columns: 1fr 55px 14px 55px 30px;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .material-row-labels span {
+    font-size: 9.5px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    text-align: center;
+  }
+  .material-row-labels span:first-child { text-align: left; }
   .remove-btn {
     background: #fdeaea; color: #d64545; border: none;
     border-radius: 8px; width: 30px; height: 38px; font-size: 16px; cursor: pointer;
@@ -224,13 +251,13 @@
   <div class="card">
     <div class="section-label">📎 ORDER ID</div>
     <div id="selectedOrderBox"></div>
-    <input type="text" id="orderSearch" placeholder="Cari Order ID / Nama Pelanggan (min. 3 huruf)" oninput="onSearchOrder()">
+    <input type="text" id="orderSearch" placeholder="Cari IHLD / No Order / Nama Proyek (min. 3 huruf)" oninput="onSearchOrder()">
     <div class="order-results" id="orderResults"></div>
-    <div class="hint">Ketik minimal 3 huruf untuk mencari, atau pilih dari daftar order terbaru.</div>
+    <div class="hint">Ketik minimal 3 huruf (bisa cari pakai IHLD, No Order, atau Nama Proyek), atau pilih dari daftar order terbaru.</div>
   </div>
 
   <div class="card">
-    <div class="section-label">📦 MATERIAL DIGUNAKAN</div>
+    <div class="section-label">📦 UPDATE MATERIAL</div>
     <div id="materialRows"></div>
     <button class="add-material-btn" onclick="addMaterialRow()">+ Tambah Material</button>
   </div>
@@ -286,7 +313,6 @@
     } catch (err) {
       showToast('Gagal memuat daftar material: ' + err.message, 'error');
     }
-    addMaterialRow();
   }
 
   function onSearchOrder() {
@@ -319,10 +345,10 @@
     box.innerHTML = orders.map((o, i) => `
       <div class="order-item" onclick="selectOrder(${i})">
         <div>
-          <div class="oid">${o.orderId}</div>
-          <div class="ometa">${o.nama || '-'} · ${o.district || '-'}</div>
+          <div class="oid">${o.namaProyek || '-'}</div>
+          <div class="ometa">IHLD ${o.orderId} · ${o.noOrder || '-'} · ${o.district || '-'}</div>
         </div>
-        <span class="badge assigned">${o.status}</span>
+        <span class="badge assigned">${o.progressLapangan || '-'}</span>
       </div>
     `).join('');
     window._orderResultsCache = orders;
@@ -333,6 +359,12 @@
     document.getElementById('orderResults').innerHTML = '';
     document.getElementById('orderSearch').value = '';
     renderSelectedOrder();
+
+    // Reset baris material, lalu auto-isi 1 baris kabel dari data order
+    document.getElementById('materialRows').innerHTML = '';
+    if (selectedOrder.jenisKabel) {
+      addKabelRow();
+    }
   }
 
   function renderSelectedOrder() {
@@ -341,8 +373,8 @@
     box.innerHTML = `
       <div class="selected-order">
         <div>
-          <div class="oid">${selectedOrder.orderId}</div>
-          <div class="oname">${selectedOrder.nama || '-'}</div>
+          <div class="oid">${selectedOrder.namaProyek || '-'}</div>
+          <div class="oname">IHLD ${selectedOrder.orderId} · ${selectedOrder.noOrder || '-'}</div>
         </div>
         <button onclick="clearSelectedOrder()">Ganti</button>
       </div>
@@ -354,16 +386,44 @@
     renderSelectedOrder();
   }
 
+  // Baris kabel OTOMATIS: Material & Plan diambil dari data order yang dipilih
+  // (kolom "Jenis Kabel" dan "Panjang Kabel (m)"), user cuma isi Aktual.
+  function addKabelRow() {
+    const wrap = document.createElement('div');
+    wrap.className = 'material-row';
+    wrap.innerHTML = `
+      <input type="text" class="mat-name-readonly" value="${selectedOrder.jenisKabel}" readonly data-material="${selectedOrder.jenisKabel}">
+      <input type="number" class="mat-actual" placeholder="Aktual" min="0">
+      <span class="slash">/</span>
+      <input type="number" class="mat-plan plan-input" value="${selectedOrder.panjangKabelPlan || ''}" readonly>
+      <span></span>
+    `;
+    document.getElementById('materialRows').appendChild(wrap);
+    ensureRowLabels();
+  }
+
   function addMaterialRow() {
     const wrap = document.createElement('div');
     wrap.className = 'material-row';
     const options = materialMaster.map(m => `<option value="${m.nama}" data-satuan="${m.satuan}">${m.nama}</option>`).join('');
     wrap.innerHTML = `
       <select class="mat-select">${options || '<option value="">Belum ada data material</option>'}</select>
-      <input type="number" class="mat-qty" placeholder="Qty" min="0">
+      <input type="number" class="mat-actual" placeholder="Aktual" min="0">
+      <span class="slash">/</span>
+      <input type="number" class="mat-plan plan-input" placeholder="-" readonly>
       <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
     `;
     document.getElementById('materialRows').appendChild(wrap);
+    ensureRowLabels();
+  }
+
+  function ensureRowLabels() {
+    if (document.getElementById('materialRowLabels')) return;
+    const labels = document.createElement('div');
+    labels.className = 'material-row-labels';
+    labels.id = 'materialRowLabels';
+    labels.innerHTML = `<span>Material</span><span>Aktual</span><span></span><span>Plan</span><span></span>`;
+    document.getElementById('materialRows').prepend(labels);
   }
 
   function getLocation() {
@@ -401,17 +461,17 @@
     }
     const rows = [...document.querySelectorAll('.material-row')];
     const materials = rows.map(r => {
+      const readonlyInput = r.querySelector('.mat-name-readonly');
       const sel = r.querySelector('.mat-select');
-      const qty = r.querySelector('.mat-qty').value;
-      return {
-        nama: sel.value,
-        satuan: sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.satuan : '',
-        jumlah: qty
-      };
-    }).filter(m => m.nama && m.jumlah && Number(m.jumlah) > 0);
+      const nama = readonlyInput ? readonlyInput.dataset.material : (sel ? sel.value : '');
+      const satuan = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.satuan : (readonlyInput ? 'meter' : '');
+      const actual = r.querySelector('.mat-actual').value;
+      const plan = r.querySelector('.mat-plan').value;
+      return { nama, satuan, jumlahActual: actual, jumlahPlan: plan };
+    }).filter(m => m.nama && m.jumlahActual && Number(m.jumlahActual) > 0);
 
     if (!materials.length) {
-      showToast('Isi minimal 1 material dengan jumlah > 0', 'error');
+      showToast('Isi minimal 1 material dengan jumlah aktual > 0', 'error');
       return;
     }
 
@@ -423,8 +483,9 @@
       const res = await fetch(API_URL, {
         method: 'POST',
         body: JSON.stringify({
-          orderId: selectedOrder.orderId,
-          namaPelanggan: selectedOrder.nama,
+          orderId: selectedOrder.orderId,       // IHLD
+          noOrder: selectedOrder.noOrder,
+          namaProyek: selectedOrder.namaProyek,
           petugas: petugasName,
           materials: materials,
           koordinat: coordinate,
