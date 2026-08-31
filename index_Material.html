@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Form Input Material</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #eef0f3;
+    --card: #ffffff;
+    --border: #e4e7ec;
+    --text: #1a1d23;
+    --text-dim: #7a8290;
+    --blue: #2f6fed;
+    --blue-dark: #1f52c9;
+    --green: #1fa971;
+    --amber: #d98a1f;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 14px;
+    max-width: 480px;
+    margin: 0 auto;
+    padding-bottom: 90px;
+  }
+  .page-header { padding: 6px 4px 16px; }
+  .page-header h1 { font-size: 20px; margin: 0 0 2px; }
+  .page-header p { font-size: 13px; color: var(--text-dim); margin: 0; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .selected-order {
+    background: #eef4ff;
+    border: 1px solid #cfe0fd;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .selected-order .oid { font-weight: 700; font-size: 13.5px; }
+  .selected-order .oname { font-size: 12px; color: var(--text-dim); }
+  .selected-order button {
+    background: none; border: none; color: var(--blue);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+
+  input[type="text"], textarea, select {
+    width: 100%;
+    background: #f5f6f8;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 11px 12px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  input::placeholder, textarea::placeholder { color: #9aa1ad; }
+  textarea { resize: vertical; min-height: 60px; }
+
+  .order-results { margin-top: 8px; }
+  .order-item {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .order-item:last-child { border-bottom: none; }
+  .order-item:active { background: #f5f6f8; }
+  .order-item .oid { font-weight: 700; font-size: 13px; }
+  .order-item .ometa { font-size: 11.5px; color: var(--text-dim); }
+  .order-item .badge {
+    font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+  }
+  .badge.assigned { background: #fdf1de; color: var(--amber); }
+
+  .hint { font-size: 11.5px; color: var(--text-dim); margin-top: 8px; }
+
+  .material-row {
+    display: grid;
+    grid-template-columns: 1fr 70px 30px;
+    gap: 8px;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .material-row select { font-size: 13px; }
+  .material-row input { text-align: center; }
+  .remove-btn {
+    background: #fdeaea; color: #d64545; border: none;
+    border-radius: 8px; width: 30px; height: 38px; font-size: 16px; cursor: pointer;
+  }
+  .add-material-btn {
+    width: 100%;
+    background: #eef4ff;
+    color: var(--blue);
+    border: 1px dashed #b9d1fb;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+
+  .gps-btn {
+    width: 100%;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 13px;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .gps-btn:active { background: var(--blue-dark); }
+  .coord-display {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 13px;
+    color: var(--text-dim);
+    background: #f5f6f8;
+    border-radius: 8px;
+    padding: 9px 12px;
+  }
+
+  .photo-upload {
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  .photo-preview {
+    width: 100%;
+    border-radius: 10px;
+    margin-top: 10px;
+    display: none;
+  }
+
+  .submit-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--bg);
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+  }
+  .submit-btn {
+    max-width: 452px;
+    margin: 0 auto;
+    width: 100%;
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 15px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: block;
+  }
+  .submit-btn:disabled { background: #a8a8a8; }
+  .submit-btn:active:not(:disabled) { transform: scale(0.99); }
+
+  .toast {
+    position: fixed;
+    top: 14px; left: 14px; right: 14px;
+    max-width: 452px;
+    margin: 0 auto;
+    background: #1a1d23;
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    text-align: center;
+    z-index: 100;
+    display: none;
+  }
+  .toast.error { background: #d64545; }
+  .toast.success { background: var(--green); }
+</style>
+</head>
+<body>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="page-header">
+    <h1>📋 Form Input Material</h1>
+    <p>Catat pemakaian material per Order ID</p>
+  </div>
+
+  <div class="card">
+    <div class="section-label">📎 ORDER ID</div>
+    <div id="selectedOrderBox"></div>
+    <input type="text" id="orderSearch" placeholder="Cari Order ID / Nama Pelanggan (min. 3 huruf)" oninput="onSearchOrder()">
+    <div class="order-results" id="orderResults"></div>
+    <div class="hint">Ketik minimal 3 huruf untuk mencari, atau pilih dari daftar order terbaru.</div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">📦 MATERIAL DIGUNAKAN</div>
+    <div id="materialRows"></div>
+    <button class="add-material-btn" onclick="addMaterialRow()">+ Tambah Material</button>
+  </div>
+
+  <div class="card">
+    <div class="section-label">📍 LOKASI (OPSIONAL)</div>
+    <button class="gps-btn" onclick="getLocation()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+      Gunakan lokasi saya
+    </button>
+    <div class="coord-display" id="coordDisplay">Belum diambil</div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">📷 FOTO BUKTI (OPSIONAL)</div>
+    <label class="photo-upload" for="photoInput" id="photoLabel">
+      Ketuk untuk ambil / pilih foto
+      <img class="photo-preview" id="photoPreview">
+    </label>
+    <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoSelected(event)">
+  </div>
+
+  <div class="card">
+    <div class="section-label">📝 CATATAN (OPSIONAL)</div>
+    <textarea id="catatan" placeholder="Catatan tambahan..."></textarea>
+  </div>
+
+  <div class="submit-bar">
+    <button class="submit-btn" id="submitBtn" onclick="submitForm()">Simpan Data Material</button>
+  </div>
+
+<script>
+  // ==== GANTI dengan URL Web App hasil deploy Apps Script kamu ====
+  const API_URL = 'https://script.google.com/macros/s/AKfycbz6aACNfnekw8rRHUQcvhEhqaZiWIKMSiIlg73FJrvUvXXKDxRAXeC_rFWjVOky-bgJ/exec';
+
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+  const petugasName = tg && tg.initDataUnsafe && tg.initDataUnsafe.user
+    ? `${tg.initDataUnsafe.user.first_name || ''} ${tg.initDataUnsafe.user.last_name || ''}`.trim()
+    : 'Petugas';
+
+  let materialMaster = [];
+  let selectedOrder = null;
+  let coordinate = '';
+  let photoBase64 = '';
+  let searchTimeout = null;
+
+  async function init() {
+    try {
+      const res = await fetch(`${API_URL}?action=get_materials`);
+      const data = await res.json();
+      materialMaster = data.materials || [];
+    } catch (err) {
+      showToast('Gagal memuat daftar material: ' + err.message, 'error');
+    }
+    addMaterialRow();
+  }
+
+  function onSearchOrder() {
+    clearTimeout(searchTimeout);
+    const q = document.getElementById('orderSearch').value;
+    searchTimeout = setTimeout(() => searchOrder(q), 350);
+  }
+
+  async function searchOrder(q) {
+    const box = document.getElementById('orderResults');
+    if (q.trim().length > 0 && q.trim().length < 3) {
+      box.innerHTML = '';
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}?action=search_order&q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      renderOrderResults(data.orders || []);
+    } catch (err) {
+      showToast('Gagal mencari order: ' + err.message, 'error');
+    }
+  }
+
+  function renderOrderResults(orders) {
+    const box = document.getElementById('orderResults');
+    if (!orders.length) {
+      box.innerHTML = `<div class="hint">Tidak ada order ditemukan.</div>`;
+      return;
+    }
+    box.innerHTML = orders.map((o, i) => `
+      <div class="order-item" onclick="selectOrder(${i})">
+        <div>
+          <div class="oid">${o.orderId}</div>
+          <div class="ometa">${o.nama || '-'} · ${o.district || '-'}</div>
+        </div>
+        <span class="badge assigned">${o.status}</span>
+      </div>
+    `).join('');
+    window._orderResultsCache = orders;
+  }
+
+  function selectOrder(i) {
+    selectedOrder = window._orderResultsCache[i];
+    document.getElementById('orderResults').innerHTML = '';
+    document.getElementById('orderSearch').value = '';
+    renderSelectedOrder();
+  }
+
+  function renderSelectedOrder() {
+    const box = document.getElementById('selectedOrderBox');
+    if (!selectedOrder) { box.innerHTML = ''; return; }
+    box.innerHTML = `
+      <div class="selected-order">
+        <div>
+          <div class="oid">${selectedOrder.orderId}</div>
+          <div class="oname">${selectedOrder.nama || '-'}</div>
+        </div>
+        <button onclick="clearSelectedOrder()">Ganti</button>
+      </div>
+    `;
+  }
+
+  function clearSelectedOrder() {
+    selectedOrder = null;
+    renderSelectedOrder();
+  }
+
+  function addMaterialRow() {
+    const wrap = document.createElement('div');
+    wrap.className = 'material-row';
+    const options = materialMaster.map(m => `<option value="${m.nama}" data-satuan="${m.satuan}">${m.nama}</option>`).join('');
+    wrap.innerHTML = `
+      <select class="mat-select">${options || '<option value="">Belum ada data material</option>'}</select>
+      <input type="number" class="mat-qty" placeholder="Qty" min="0">
+      <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+    `;
+    document.getElementById('materialRows').appendChild(wrap);
+  }
+
+  function getLocation() {
+    if (!navigator.geolocation) {
+      showToast('GPS tidak didukung di perangkat ini', 'error');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        coordinate = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+        document.getElementById('coordDisplay').textContent = coordinate;
+      },
+      err => showToast('Gagal ambil lokasi: ' + err.message, 'error'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  function onPhotoSelected(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      photoBase64 = reader.result;
+      const img = document.getElementById('photoPreview');
+      img.src = photoBase64;
+      img.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function submitForm() {
+    if (!selectedOrder) {
+      showToast('Pilih Order ID terlebih dahulu', 'error');
+      return;
+    }
+    const rows = [...document.querySelectorAll('.material-row')];
+    const materials = rows.map(r => {
+      const sel = r.querySelector('.mat-select');
+      const qty = r.querySelector('.mat-qty').value;
+      return {
+        nama: sel.value,
+        satuan: sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.satuan : '',
+        jumlah: qty
+      };
+    }).filter(m => m.nama && m.jumlah && Number(m.jumlah) > 0);
+
+    if (!materials.length) {
+      showToast('Isi minimal 1 material dengan jumlah > 0', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Menyimpan...';
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          orderId: selectedOrder.orderId,
+          namaPelanggan: selectedOrder.nama,
+          petugas: petugasName,
+          materials: materials,
+          koordinat: coordinate,
+          catatan: document.getElementById('catatan').value,
+          fotoBase64: photoBase64
+        })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Gagal menyimpan');
+
+      showToast(`Berhasil menyimpan ${data.itemsSaved} material`, 'success');
+      resetForm();
+    } catch (err) {
+      showToast('Gagal menyimpan: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Simpan Data Material';
+    }
+  }
+
+  function resetForm() {
+    selectedOrder = null;
+    coordinate = '';
+    photoBase64 = '';
+    renderSelectedOrder();
+    document.getElementById('coordDisplay').textContent = 'Belum diambil';
+    document.getElementById('photoPreview').style.display = 'none';
+    document.getElementById('photoInput').value = '';
+    document.getElementById('catatan').value = '';
+    document.getElementById('materialRows').innerHTML = '';
+    addMaterialRow();
+  }
+
+  function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + type;
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3000);
+  }
+
+  init();
+</script>
+</body>
+</html>
