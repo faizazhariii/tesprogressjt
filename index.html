@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Form Input Material</title>
+<title>Update Progress</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root {
@@ -29,9 +29,13 @@
     margin: 0 auto;
     padding-bottom: 90px;
   }
-  .page-header { padding: 6px 4px 16px; }
+  .page-header { padding: 6px 4px 16px; display: flex; align-items: center; gap: 10px; }
   .page-header h1 { font-size: 20px; margin: 0 0 2px; }
   .page-header p { font-size: 13px; color: var(--text-dim); margin: 0; }
+  .back-btn {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    width: 36px; height: 36px; font-size: 16px; cursor: pointer; flex-shrink: 0;
+  }
 
   .card {
     background: var(--card);
@@ -51,6 +55,24 @@
     gap: 6px;
     margin-bottom: 12px;
   }
+
+  /* Layar pilih kategori */
+  .kategori-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .kategori-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 10px;
+    text-align: center;
+    cursor: pointer;
+  }
+  .kategori-card:active { background: #f5f6f8; }
+  .kategori-card .icon { font-size: 26px; margin-bottom: 8px; }
+  .kategori-card .label { font-weight: 700; font-size: 14px; }
 
   .selected-order {
     background: #eef4ff;
@@ -112,6 +134,10 @@
   .material-row select { font-size: 12.5px; }
   .material-row input { text-align: center; font-size: 13px; padding: 11px 6px; }
   .material-row .slash { text-align: center; color: var(--text-dim); font-size: 13px; }
+  .material-row input.plan-input {
+    background: #eef4ff;
+    color: var(--text-dim);
+  }
   .material-row .mat-name-readonly {
     background: #f5f6f8;
     color: var(--text);
@@ -120,10 +146,6 @@
     padding: 11px 10px;
     border: 1px solid var(--border);
     border-radius: 10px;
-  }
-  .material-row input.plan-input {
-    background: #eef4ff;
-    color: var(--text-dim);
   }
   .material-row-labels {
     display: grid;
@@ -237,61 +259,84 @@
   }
   .toast.error { background: #d64545; }
   .toast.success { background: var(--green); }
+
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
 
   <div class="toast" id="toast"></div>
 
-  <div class="page-header">
-    <h1>📋 Form Input Material</h1>
-    <p>Catat pemakaian material per Order ID</p>
+  <!-- LAYAR 1: PILIH KATEGORI -->
+  <div id="screenKategori">
+    <div class="page-header">
+      <div>
+        <h1>🔄 Update Progress</h1>
+        <p>Pilih kategori dulu</p>
+      </div>
+    </div>
+    <div class="kategori-grid" id="kategoriGrid"></div>
   </div>
 
-  <div class="card">
-    <div class="section-label">📎 ORDER ID</div>
-    <div id="selectedOrderBox"></div>
-    <input type="text" id="orderSearch" placeholder="Cari IHLD / No Order / Nama Proyek (min. 3 huruf)" oninput="onSearchOrder()">
-    <div class="order-results" id="orderResults"></div>
-    <div class="hint">Ketik minimal 3 huruf (bisa cari pakai IHLD, No Order, atau Nama Proyek), atau pilih dari daftar order terbaru.</div>
-  </div>
+  <!-- LAYAR 2: FORM -->
+  <div id="screenForm" class="hidden">
+    <div class="page-header">
+      <button class="back-btn" onclick="backToKategori()">←</button>
+      <div>
+        <h1 id="formTitle">📋 Update Progress</h1>
+        <p>Catat pemakaian material per Order ID</p>
+      </div>
+    </div>
 
-  <div class="card">
-    <div class="section-label">📦 UPDATE MATERIAL</div>
-    <div id="materialRows"></div>
-    <button class="add-material-btn" onclick="addMaterialRow()">+ Tambah Material</button>
-  </div>
+    <div class="card">
+      <div class="section-label">📎 ORDER ID</div>
+      <div id="selectedOrderBox"></div>
+      <input type="text" id="orderSearch" placeholder="Cari IHLD / No Order / Nama Proyek (min. 3 huruf)" oninput="onSearchOrder()">
+      <div class="order-results" id="orderResults"></div>
+      <div class="hint">Ketik minimal 3 huruf (bisa cari pakai IHLD, No Order, atau Nama Proyek), atau pilih dari daftar order terbaru.</div>
+    </div>
 
-  <div class="card">
-    <div class="section-label">📍 LOKASI (OPSIONAL)</div>
-    <button class="gps-btn" onclick="getLocation()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-      Gunakan lokasi saya
-    </button>
-    <div class="coord-display" id="coordDisplay">Belum diambil</div>
-  </div>
+    <div class="card">
+      <div class="section-label">📦 UPDATE MATERIAL</div>
+      <div id="materialRows"></div>
+      <button class="add-material-btn" onclick="addMaterialRow()">+ Tambah Material</button>
+    </div>
 
-  <div class="card">
-    <div class="section-label">📷 FOTO BUKTI (OPSIONAL)</div>
-    <label class="photo-upload" for="photoInput" id="photoLabel">
-      Ketuk untuk ambil / pilih foto
-      <img class="photo-preview" id="photoPreview">
-    </label>
-    <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoSelected(event)">
-  </div>
+    <div class="card">
+      <div class="section-label">📍 LOKASI (OPSIONAL)</div>
+      <button class="gps-btn" onclick="getLocation()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        Gunakan lokasi saya
+      </button>
+      <div class="coord-display" id="coordDisplay">Belum diambil</div>
+    </div>
 
-  <div class="card">
-    <div class="section-label">📝 CATATAN (OPSIONAL)</div>
-    <textarea id="catatan" placeholder="Catatan tambahan..."></textarea>
-  </div>
+    <div class="card">
+      <div class="section-label">📷 FOTO BUKTI (OPSIONAL)</div>
+      <label class="photo-upload" for="photoInput" id="photoLabel">
+        Ketuk untuk ambil / pilih foto
+        <img class="photo-preview" id="photoPreview">
+      </label>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoSelected(event)">
+    </div>
 
-  <div class="submit-bar">
-    <button class="submit-btn" id="submitBtn" onclick="submitForm()">Simpan Data Material</button>
+    <div class="card">
+      <div class="section-label">📝 CATATAN (OPSIONAL)</div>
+      <textarea id="catatan" placeholder="Catatan tambahan..."></textarea>
+    </div>
+
+    <div class="submit-bar">
+      <button class="submit-btn" id="submitBtn" onclick="submitForm()">Simpan Data Material</button>
+    </div>
   </div>
 
 <script>
   // ==== GANTI dengan URL Web App hasil deploy Apps Script kamu ====
   const API_URL = 'https://script.google.com/macros/s/AKfycbw-lKsjEI7gk2E_cq3pdv62FiNG1eMgMMcFj0WC91bppG6pJedjTR78zBRiFbcZT2dt/exec';
+
+  const KATEGORI_ICONS = {
+    'OLO': '🌐', 'HEM': '🔌', 'PT3 TA': '🗼', 'PT3 FH': '📡', 'MBB': '📶', 'QE': '✅'
+  };
 
   const tg = window.Telegram && window.Telegram.WebApp;
   if (tg) { tg.ready(); tg.expand(); }
@@ -299,20 +344,53 @@
     ? `${tg.initDataUnsafe.user.first_name || ''} ${tg.initDataUnsafe.user.last_name || ''}`.trim()
     : 'Petugas';
 
+  let selectedKategori = null;
   let materialMaster = [];
   let selectedOrder = null;
   let coordinate = '';
   let photoBase64 = '';
   let searchTimeout = null;
 
-  async function init() {
+  async function initKategoriScreen() {
     try {
-      const res = await fetch(`${API_URL}?action=get_materials`);
+      const res = await fetch(`${API_URL}?action=get_kategori_list`);
+      const data = await res.json();
+      renderKategoriGrid(data.kategoriList || Object.keys(KATEGORI_ICONS));
+    } catch (err) {
+      renderKategoriGrid(Object.keys(KATEGORI_ICONS)); // fallback kalau API gagal
+    }
+  }
+
+  function renderKategoriGrid(list) {
+    const grid = document.getElementById('kategoriGrid');
+    grid.innerHTML = list.map(k => `
+      <div class="kategori-card" onclick="selectKategori('${k}')">
+        <div class="icon">${KATEGORI_ICONS[k] || '📁'}</div>
+        <div class="label">${k}</div>
+      </div>
+    `).join('');
+  }
+
+  async function selectKategori(kategori) {
+    selectedKategori = kategori;
+    document.getElementById('formTitle').textContent = `📋 ${kategori}`;
+    document.getElementById('screenKategori').classList.add('hidden');
+    document.getElementById('screenForm').classList.remove('hidden');
+    resetForm();
+
+    try {
+      const res = await fetch(`${API_URL}?action=get_materials&kategori=${encodeURIComponent(kategori)}`);
       const data = await res.json();
       materialMaster = data.materials || [];
     } catch (err) {
       showToast('Gagal memuat daftar material: ' + err.message, 'error');
     }
+  }
+
+  function backToKategori() {
+    document.getElementById('screenForm').classList.add('hidden');
+    document.getElementById('screenKategori').classList.remove('hidden');
+    selectedKategori = null;
   }
 
   function onSearchOrder() {
@@ -328,8 +406,9 @@
       return;
     }
     try {
-      const res = await fetch(`${API_URL}?action=search_order&q=${encodeURIComponent(q)}`);
+      const res = await fetch(`${API_URL}?action=search_order&kategori=${encodeURIComponent(selectedKategori)}&q=${encodeURIComponent(q)}`);
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       renderOrderResults(data.orders || []);
     } catch (err) {
       showToast('Gagal mencari order: ' + err.message, 'error');
@@ -360,7 +439,6 @@
     document.getElementById('orderSearch').value = '';
     renderSelectedOrder();
 
-    // Reset baris material, lalu auto-isi 1 baris kabel dari data order
     document.getElementById('materialRows').innerHTML = '';
     if (selectedOrder.jenisKabel) {
       addKabelRow();
@@ -386,8 +464,6 @@
     renderSelectedOrder();
   }
 
-  // Baris kabel OTOMATIS: Material & Plan diambil dari data order yang dipilih
-  // (kolom "Jenis Kabel" dan "Panjang Kabel (m)"), user cuma isi Aktual.
   function addKabelRow() {
     const wrap = document.createElement('div');
     wrap.className = 'material-row';
@@ -455,6 +531,10 @@
   }
 
   async function submitForm() {
+    if (!selectedKategori) {
+      showToast('Pilih kategori terlebih dahulu', 'error');
+      return;
+    }
     if (!selectedOrder) {
       showToast('Pilih Order ID terlebih dahulu', 'error');
       return;
@@ -483,7 +563,8 @@
       const res = await fetch(API_URL, {
         method: 'POST',
         body: JSON.stringify({
-          orderId: selectedOrder.orderId,       // IHLD
+          kategori: selectedKategori,
+          orderId: selectedOrder.orderId,
           noOrder: selectedOrder.noOrder,
           namaProyek: selectedOrder.namaProyek,
           petugas: petugasName,
@@ -516,7 +597,8 @@
     document.getElementById('photoInput').value = '';
     document.getElementById('catatan').value = '';
     document.getElementById('materialRows').innerHTML = '';
-    addMaterialRow();
+    document.getElementById('orderSearch').value = '';
+    document.getElementById('orderResults').innerHTML = '';
   }
 
   function showToast(msg, type) {
@@ -527,7 +609,7 @@
     setTimeout(() => { t.style.display = 'none'; }, 3000);
   }
 
-  init();
+  initKategoriScreen();
 </script>
 </body>
 </html>
