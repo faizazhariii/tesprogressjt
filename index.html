@@ -1,239 +1,750 @@
-/**
- * Update Progress — Backend API Multi-Kategori (Google Apps Script)
- * ----------------------------------------------------------------------
- * Setup:
- * 1. Spreadsheet ini punya tab per kategori, masing-masing formatnya sama:
- *      IHLD | NO ORDER | NAMA PROYEK | DISTRICT | Progress Lapangan | Panjang Kabel (m) | Jenis Kabel
- *    Nama tab: OLO, HEM, PT3 TA, PT3 FH, MBB, QE
- *    (kalau ada kategori baru, tinggal tambah namanya di array KATEGORI_LIST di bawah)
- *
- * 2. Sheet "Data Deploy" (dulu Material_Master), header baris 1:
- *      Kategori | NamaMaterial | Satuan | JenisMaterial
- *
- * 3. Sheet "Data Progress" (dulu Material_Input, biarkan kosong, akan otomatis terisi):
- *      Timestamp | Kategori | IHLD | NoOrder | NamaProyek | Petugas | Material | JumlahActual | JumlahPlan | Satuan | FotoURL | Koordinat | Catatan
- *
- * 4. (Opsional) Buat folder Google Drive buat foto bukti, isi ID-nya ke DRIVE_FOLDER_ID.
- *
- * 5. Extensions > Apps Script di spreadsheet ini, paste seluruh file ini.
- * 6. Deploy > New deployment > Web app (Execute as: Me, Access: Anyone)
- * 7. Copy URL -> pakai sebagai API_URL di index_Material.html
- */
-
-const KATEGORI_LIST = ['OLO', 'HEM', 'PT3 TA', 'PT3 FH', 'MBB', 'QE'];
-const SHEET_DATA_DEPLOY = 'Data Deploy';
-const SHEET_DATA_PROGRESS = 'Data Progress';
-const DRIVE_FOLDER_ID = ''; // isi Folder ID Google Drive kalau mau simpan foto
-
-function doGet(e) {
-  const params = e.parameter || {};
-  try {
-    let result;
-    if (params.action === 'search_order') {
-      result = { orders: searchOrders(params.kategori, params.q || '') };
-    } else if (params.action === 'get_materials') {
-      result = { materials: getDataDeploy(params.kategori) };
-    } else if (params.action === 'get_kategori_list') {
-      result = { kategoriList: KATEGORI_LIST };
-    } else if (params.action === 'get_order_detail') {
-      result = getOrderDetail(params.kategori, params.orderId);
-    } else {
-      result = { kategoriList: KATEGORI_LIST };
-    }
-    return jsonOutput(result);
-  } catch (err) {
-    return jsonOutput({ error: err.message });
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Update Progress</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #eef0f3;
+    --card: #ffffff;
+    --border: #e4e7ec;
+    --text: #1a1d23;
+    --text-dim: #7a8290;
+    --blue: #2f6fed;
+    --blue-dark: #1f52c9;
+    --green: #1fa971;
+    --amber: #d98a1f;
+    --radius: 16px;
   }
-}
-
-// Dipakai mode "Cek Progress JT" (read-only): gabungkan data dasar order
-// (dari tab kategori) + histori update terakhir tiap material (dari Data Progress)
-function getOrderDetail(kategori, orderId) {
-  const order = getOrderById(kategori, orderId);
-  const progress = getProgressRows(kategori, orderId);
-  return { order: order, progress: progress };
-}
-
-function getOrderById(kategori, orderId) {
-  if (!kategori || KATEGORI_LIST.indexOf(kategori) === -1) {
-    throw new Error('Kategori tidak valid: ' + kategori);
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 14px;
+    max-width: 480px;
+    margin: 0 auto;
+    padding-bottom: 90px;
   }
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(kategori);
-  if (!sheet) throw new Error('Sheet kategori "' + kategori + '" tidak ditemukan');
+  .page-header { padding: 6px 4px 16px; display: flex; align-items: center; gap: 10px; }
+  .page-header h1 { font-size: 20px; margin: 0 0 2px; }
+  .page-header p { font-size: 13px; color: var(--text-dim); margin: 0; }
+  .back-btn {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    width: 36px; height: 36px; font-size: 16px; cursor: pointer; flex-shrink: 0;
+  }
 
-  const values = sheet.getDataRange().getValues();
-  values.shift();
-  const row = values.find(r => String(r[0]) === String(orderId));
-  if (!row) return null;
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
 
-  return {
-    orderId: String(row[0]),
-    noOrder: row[1],
-    namaProyek: row[2],
-    district: row[3],
-    progressLapangan: row[4],
-    panjangKabelPlan: row[5],
-    jenisKabel: row[6]
+  /* Layar pilih kategori */
+  .kategori-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .kategori-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 10px;
+    text-align: center;
+    cursor: pointer;
+  }
+  .kategori-card:active { background: #f5f6f8; }
+  .kategori-card .icon { font-size: 26px; margin-bottom: 8px; }
+  .kategori-card .label { font-weight: 700; font-size: 14px; }
+
+  .selected-order {
+    background: #eef4ff;
+    border: 1px solid #cfe0fd;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .selected-order .oid { font-weight: 700; font-size: 13.5px; }
+  .selected-order .oname { font-size: 12px; color: var(--text-dim); }
+  .selected-order button {
+    background: none; border: none; color: var(--blue);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+
+  input[type="text"], textarea, select {
+    width: 100%;
+    background: #f5f6f8;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 11px 12px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  input::placeholder, textarea::placeholder { color: #9aa1ad; }
+  textarea { resize: vertical; min-height: 60px; }
+
+  .order-results { margin-top: 8px; }
+  .order-item {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .order-item:last-child { border-bottom: none; }
+  .order-item:active { background: #f5f6f8; }
+  .order-item .oid { font-weight: 700; font-size: 13px; }
+  .order-item .ometa { font-size: 11.5px; color: var(--text-dim); }
+  .order-item .badge {
+    font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+  }
+  .badge.assigned { background: #fdf1de; color: var(--amber); }
+
+  .hint { font-size: 11.5px; color: var(--text-dim); margin-top: 8px; }
+
+  .material-row {
+    display: grid;
+    grid-template-columns: 1fr 55px 14px 55px 30px;
+    gap: 6px;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .material-row select { font-size: 12.5px; }
+  .material-row input { text-align: center; font-size: 13px; padding: 11px 6px; }
+  .material-row .slash { text-align: center; color: var(--text-dim); font-size: 13px; }
+  .material-row input.plan-input {
+    background: #eef4ff;
+    color: var(--text-dim);
+  }
+  .material-row .mat-name-readonly {
+    background: #f5f6f8;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 11px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .material-row-labels {
+    display: grid;
+    grid-template-columns: 1fr 55px 14px 55px 30px;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .material-row-labels span {
+    font-size: 9.5px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    text-align: center;
+  }
+  .material-row-labels span:first-child { text-align: left; }
+  .remove-btn {
+    background: #fdeaea; color: #d64545; border: none;
+    border-radius: 8px; width: 30px; height: 38px; font-size: 16px; cursor: pointer;
+  }
+  .add-material-btn {
+    width: 100%;
+    background: #eef4ff;
+    color: var(--blue);
+    border: 1px dashed #b9d1fb;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+
+  .gps-btn {
+    width: 100%;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 13px;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .gps-btn:active { background: var(--blue-dark); }
+  .coord-display {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 13px;
+    color: var(--text-dim);
+    background: #f5f6f8;
+    border-radius: 8px;
+    padding: 9px 12px;
+  }
+
+  .photo-upload {
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  .photo-preview {
+    width: 100%;
+    border-radius: 10px;
+    margin-top: 10px;
+    display: none;
+  }
+
+  .submit-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--bg);
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+  }
+  .submit-btn {
+    max-width: 452px;
+    margin: 0 auto;
+    width: 100%;
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 15px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: block;
+  }
+  .submit-btn:disabled { background: #a8a8a8; }
+  .submit-btn:active:not(:disabled) { transform: scale(0.99); }
+
+  .toast {
+    position: fixed;
+    top: 14px; left: 14px; right: 14px;
+    max-width: 452px;
+    margin: 0 auto;
+    background: #1a1d23;
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    text-align: center;
+    z-index: 100;
+    display: none;
+  }
+  .toast.error { background: #d64545; }
+  .toast.success { background: var(--green); }
+
+  .hidden { display: none !important; }
+
+  .info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .k { color: var(--text-dim); }
+  .info-row .v { font-weight: 600; text-align: right; }
+
+  .progress-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .progress-item .pi-material { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+  .progress-item .pi-qty { font-size: 20px; font-weight: 800; color: var(--blue); }
+  .progress-item .pi-qty span { font-size: 13px; font-weight: 500; color: var(--text-dim); }
+  .progress-item .pi-meta { font-size: 11.5px; color: var(--text-dim); margin-top: 6px; line-height: 1.6; }
+  .progress-item .pi-foto {
+    width: 100%; border-radius: 10px; margin-top: 10px; display: block;
+  }
+  .progress-item .pi-catatan {
+    font-size: 12.5px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);
+  }
+</style>
+</head>
+<body>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- LAYAR 0: PILIH MODE -->
+  <div id="screenMode">
+    <div class="page-header">
+      <div>
+        <h1>📡 Deployment ED SBU</h1>
+        <p>Pilih mode</p>
+      </div>
+    </div>
+    <div class="kategori-grid" style="grid-template-columns: 1fr 1fr;">
+      <div class="kategori-card" onclick="selectMode('cek')">
+        <div class="icon">👁️</div>
+        <div class="label" style="font-size:13px;">Cek Progress JT</div>
+      </div>
+      <div class="kategori-card" onclick="selectMode('input')">
+        <div class="icon">✏️</div>
+        <div class="label" style="font-size:13px;">Input Progress</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAYAR 1: PILIH KATEGORI -->
+  <div id="screenKategori" class="hidden">
+    <div class="page-header">
+      <button class="back-btn" onclick="backToMode()">←</button>
+      <div>
+        <h1 id="kategoriScreenTitle">🔄 Update Progress</h1>
+        <p>Pilih kategori</p>
+      </div>
+    </div>
+    <div class="kategori-grid" id="kategoriGrid"></div>
+  </div>
+
+  <!-- LAYAR 2: FORM -->
+  <div id="screenForm" class="hidden">
+    <div class="page-header">
+      <button class="back-btn" onclick="backToKategori()">←</button>
+      <div>
+        <h1 id="formTitle">📋 Update Progress</h1>
+        <p>Catat pemakaian material per Order ID</p>
+      </div>
+    </div>
+
+    <div class="card" id="orderSearchCard">
+      <div class="section-label">📎 ORDER ID</div>
+      <div id="selectedOrderBox"></div>
+      <input type="text" id="orderSearch" placeholder="Cari IHLD / No Order / Nama Proyek (min. 3 huruf)" oninput="onSearchOrder()">
+      <div class="order-results" id="orderResults"></div>
+      <div class="hint">Ketik minimal 3 huruf (bisa cari pakai IHLD, No Order, atau Nama Proyek), atau pilih dari daftar order terbaru.</div>
+    </div>
+
+    <!-- MODE INPUT: form update material -->
+    <div id="inputModeSection" class="hidden">
+      <div class="card">
+        <div class="section-label">📦 UPDATE MATERIAL</div>
+        <div id="materialRows"></div>
+        <button class="add-material-btn" onclick="addMaterialRow()">+ Tambah Material</button>
+      </div>
+
+      <div class="card">
+        <div class="section-label">📍 LOKASI (OPSIONAL)</div>
+        <button class="gps-btn" onclick="getLocation()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          Gunakan lokasi saya
+        </button>
+        <div class="coord-display" id="coordDisplay">Belum diambil</div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">📷 FOTO BUKTI (OPSIONAL)</div>
+        <label class="photo-upload" for="photoInput" id="photoLabel">
+          Ketuk untuk ambil / pilih foto
+          <img class="photo-preview" id="photoPreview">
+        </label>
+        <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoSelected(event)">
+      </div>
+
+      <div class="card">
+        <div class="section-label">📝 CATATAN (OPSIONAL)</div>
+        <textarea id="catatan" placeholder="Catatan tambahan..."></textarea>
+      </div>
+    </div>
+
+    <!-- MODE CEK: detail progress read-only -->
+    <div id="cekModeSection" class="hidden">
+      <div class="card" id="orderInfoCard"></div>
+      <div id="progressDetailList"></div>
+    </div>
+
+    <div class="submit-bar" id="submitBar">
+      <button class="submit-btn" id="submitBtn" onclick="submitForm()">Simpan Data Material</button>
+    </div>
+  </div>
+
+<script>
+  // ==== GANTI dengan URL Web App hasil deploy Apps Script kamu ====
+  const API_URL = 'https://script.google.com/macros/s/AKfycbw-lKsjEI7gk2E_cq3pdv62FiNG1eMgMMcFj0WC91bppG6pJedjTR78zBRiFbcZT2dt/exec';
+
+  const KATEGORI_ICONS = {
+    'OLO': '🌐', 'HEM': '🔌', 'PT3 TA': '🗼', 'PT3 FH': '📡', 'MBB': '📶', 'QE': '✅'
   };
-}
 
-// Kolom Data Progress: Timestamp | Kategori | IHLD | NoOrder | NamaProyek | Petugas | Material | JumlahActual | JumlahPlan | Satuan | FotoURL | Koordinat | Catatan
-function getProgressRows(kategori, orderId) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_DATA_PROGRESS);
-  const values = sheet.getDataRange().getValues();
-  values.shift();
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+  const petugasName = tg && tg.initDataUnsafe && tg.initDataUnsafe.user
+    ? `${tg.initDataUnsafe.user.first_name || ''} ${tg.initDataUnsafe.user.last_name || ''}`.trim()
+    : 'Petugas';
 
-  return values
-    .filter(r => String(r[1]) === kategori && String(r[2]) === String(orderId))
-    .map(r => ({
-      timestamp: r[0] instanceof Date ? r[0].toISOString() : String(r[0]),
-      petugas: r[5],
-      material: r[6],
-      jumlahActual: r[7],
-      jumlahPlan: r[8],
-      satuan: r[9],
-      fotoUrl: r[10],
-      koordinat: r[11],
-      catatan: r[12]
-    }));
-}
+  let appMode = null; // 'cek' atau 'input'
+  let selectedKategori = null;
+  let materialMaster = [];
+  let selectedOrder = null;
+  let coordinate = '';
+  let photoBase64 = '';
+  let searchTimeout = null;
 
-function doPost(e) {
-  try {
-    const body = JSON.parse(e.postData.contents);
-    const { kategori, orderId, noOrder, namaProyek, petugas, materials, koordinat, catatan, fotoBase64 } = body;
-
-    if (!kategori) throw new Error('Kategori wajib diisi');
-    if (!orderId) throw new Error('Order ID wajib diisi');
-    if (!materials || !materials.length) throw new Error('Minimal 1 material harus diisi');
-
-    let fotoUrl = '';
-    if (fotoBase64 && DRIVE_FOLDER_ID) {
-      fotoUrl = saveFotoToDrive(fotoBase64, orderId);
-    }
-
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_DATA_PROGRESS);
-    const timestamp = new Date();
-
-    // Hapus baris lama yang match Kategori + IHLD + Material yang sama (replace, bukan tambah riwayat)
-    removeExistingProgressRows(sheet, kategori, orderId, materials.map(m => m.nama));
-
-    materials.forEach(m => {
-      sheet.appendRow([
-        timestamp,
-        kategori,
-        orderId,          // IHLD
-        noOrder || '',
-        namaProyek || '',
-        petugas || '',
-        m.nama,
-        m.jumlahActual,
-        m.jumlahPlan || '',
-        m.satuan || '',
-        fotoUrl,
-        koordinat || '',
-        catatan || ''
-      ]);
-    });
-
-    return jsonOutput({ success: true, itemsSaved: materials.length });
-  } catch (err) {
-    return jsonOutput({ success: false, error: err.message });
+  function selectMode(mode) {
+    appMode = mode;
+    document.getElementById('kategoriScreenTitle').textContent =
+      mode === 'cek' ? '👁️ Cek Progress JT' : '✏️ Input Progress';
+    document.getElementById('screenMode').classList.add('hidden');
+    document.getElementById('screenKategori').classList.remove('hidden');
+    initKategoriScreen();
   }
-}
 
-// Hapus baris di Data Progress yang punya Kategori + IHLD + nama Material sama
-// (dipanggil sebelum insert baris baru, supaya "replace" bukan "tambah riwayat")
-// Kolom Data Progress: Timestamp | Kategori | IHLD | NoOrder | NamaProyek | Petugas | Material | JumlahActual | JumlahPlan | Satuan | FotoURL | Koordinat | Catatan
-function removeExistingProgressRows(sheet, kategori, orderId, materialNames) {
-  const data = sheet.getDataRange().getValues();
-  const rowsToDelete = [];
+  function backToMode() {
+    document.getElementById('screenKategori').classList.add('hidden');
+    document.getElementById('screenMode').classList.remove('hidden');
+    appMode = null;
+  }
 
-  for (let i = data.length - 1; i >= 1; i--) { // dari bawah, skip header (baris 0)
-    const rowKategori = String(data[i][1] || '');
-    const rowOrderId = String(data[i][2] || '');  // IHLD
-    const rowMaterial = String(data[i][6] || '');  // Material
-    if (rowKategori === kategori && rowOrderId === orderId && materialNames.includes(rowMaterial)) {
-      rowsToDelete.push(i + 1);
+  async function initKategoriScreen() {
+    try {
+      const res = await fetch(`${API_URL}?action=get_kategori_list`);
+      const data = await res.json();
+      renderKategoriGrid(data.kategoriList || Object.keys(KATEGORI_ICONS));
+    } catch (err) {
+      renderKategoriGrid(Object.keys(KATEGORI_ICONS)); // fallback kalau API gagal
     }
   }
 
-  rowsToDelete.forEach(rowNum => sheet.deleteRow(rowNum));
-}
-
-// Cari order di tab sesuai kategori yang dipilih.
-// Kolom tab kategori: IHLD | NO ORDER | NAMA PROYEK | DISTRICT | Progress Lapangan | Panjang Kabel (m) | Jenis Kabel
-function searchOrders(kategori, query) {
-  if (!kategori || KATEGORI_LIST.indexOf(kategori) === -1) {
-    throw new Error('Kategori tidak valid: ' + kategori);
+  function renderKategoriGrid(list) {
+    const grid = document.getElementById('kategoriGrid');
+    grid.innerHTML = list.map(k => `
+      <div class="kategori-card" onclick="selectKategori('${k}')">
+        <div class="icon">${KATEGORI_ICONS[k] || '📁'}</div>
+        <div class="label">${k}</div>
+      </div>
+    `).join('');
   }
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(kategori);
-  if (!sheet) throw new Error('Sheet kategori "' + kategori + '" tidak ditemukan');
 
-  const values = sheet.getDataRange().getValues();
-  values.shift(); // buang header
+  async function selectKategori(kategori) {
+    selectedKategori = kategori;
+    document.getElementById('formTitle').textContent = `📋 ${kategori}`;
+    document.getElementById('screenKategori').classList.add('hidden');
+    document.getElementById('screenForm').classList.remove('hidden');
+    resetForm();
 
-  const q = query.trim().toLowerCase();
-  let rows = values.filter(r => r[0]); // ada IHLD
+    const isInput = appMode === 'input';
+    document.getElementById('inputModeSection').classList.toggle('hidden', !isInput);
+    document.getElementById('cekModeSection').classList.toggle('hidden', isInput);
+    document.getElementById('submitBar').classList.toggle('hidden', !isInput);
+    document.body.style.paddingBottom = isInput ? '90px' : '14px';
 
-  if (q.length >= 3) {
-    rows = rows.filter(r =>
-      String(r[0]).toLowerCase().includes(q) ||   // IHLD
-      String(r[1]).toLowerCase().includes(q) ||   // NO ORDER
-      String(r[2]).toLowerCase().includes(q)      // NAMA PROYEK
+    if (isInput) {
+      try {
+        const res = await fetch(`${API_URL}?action=get_materials&kategori=${encodeURIComponent(kategori)}`);
+        const data = await res.json();
+        materialMaster = data.materials || [];
+      } catch (err) {
+        showToast('Gagal memuat daftar material: ' + err.message, 'error');
+      }
+    }
+  }
+
+  function backToKategori() {
+    document.getElementById('screenForm').classList.add('hidden');
+    document.getElementById('screenKategori').classList.remove('hidden');
+    selectedKategori = null;
+  }
+
+  function onSearchOrder() {
+    clearTimeout(searchTimeout);
+    const q = document.getElementById('orderSearch').value;
+    searchTimeout = setTimeout(() => searchOrder(q), 350);
+  }
+
+  async function searchOrder(q) {
+    const box = document.getElementById('orderResults');
+    if (q.trim().length > 0 && q.trim().length < 3) {
+      box.innerHTML = '';
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}?action=search_order&kategori=${encodeURIComponent(selectedKategori)}&q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      renderOrderResults(data.orders || []);
+    } catch (err) {
+      showToast('Gagal mencari order: ' + err.message, 'error');
+    }
+  }
+
+  function renderOrderResults(orders) {
+    const box = document.getElementById('orderResults');
+    if (!orders.length) {
+      box.innerHTML = `<div class="hint">Tidak ada order ditemukan.</div>`;
+      return;
+    }
+    box.innerHTML = orders.map((o, i) => `
+      <div class="order-item" onclick="selectOrder(${i})">
+        <div>
+          <div class="oid">${o.namaProyek || '-'}</div>
+          <div class="ometa">IHLD ${o.orderId} · ${o.noOrder || '-'} · ${o.district || '-'}</div>
+        </div>
+        <span class="badge assigned">${o.progressLapangan || '-'}</span>
+      </div>
+    `).join('');
+    window._orderResultsCache = orders;
+  }
+
+  function selectOrder(i) {
+    selectedOrder = window._orderResultsCache[i];
+    document.getElementById('orderResults').innerHTML = '';
+    document.getElementById('orderSearch').value = '';
+    renderSelectedOrder();
+
+    if (appMode === 'input') {
+      document.getElementById('materialRows').innerHTML = '';
+      if (selectedOrder.jenisKabel) {
+        addKabelRow();
+      }
+    } else {
+      loadOrderDetail();
+    }
+  }
+
+  async function loadOrderDetail() {
+    const infoCard = document.getElementById('orderInfoCard');
+    const listBox = document.getElementById('progressDetailList');
+    infoCard.innerHTML = `<div class="hint">Memuat detail...</div>`;
+    listBox.innerHTML = '';
+
+    try {
+      const res = await fetch(`${API_URL}?action=get_order_detail&kategori=${encodeURIComponent(selectedKategori)}&orderId=${encodeURIComponent(selectedOrder.orderId)}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      renderOrderInfo(data.order);
+      renderProgressDetail(data.progress || []);
+    } catch (err) {
+      infoCard.innerHTML = '';
+      showToast('Gagal memuat detail: ' + err.message, 'error');
+    }
+  }
+
+  function renderOrderInfo(order) {
+    const infoCard = document.getElementById('orderInfoCard');
+    if (!order) { infoCard.innerHTML = `<div class="hint">Data order tidak ditemukan.</div>`; return; }
+    infoCard.innerHTML = `
+      <div class="section-label">ℹ️ INFO ORDER</div>
+      <div class="info-row"><span class="k">District</span><span class="v">${order.district || '-'}</span></div>
+      <div class="info-row"><span class="k">Progress Lapangan</span><span class="v">${order.progressLapangan || '-'}</span></div>
+      <div class="info-row"><span class="k">Jenis Kabel</span><span class="v">${order.jenisKabel || '-'}</span></div>
+      <div class="info-row"><span class="k">Panjang Kabel (Plan)</span><span class="v">${order.panjangKabelPlan || '-'} m</span></div>
+    `;
+  }
+
+  function renderProgressDetail(progress) {
+    const listBox = document.getElementById('progressDetailList');
+    if (!progress.length) {
+      listBox.innerHTML = `<div class="card"><div class="hint">Belum ada update progress untuk order ini.</div></div>`;
+      return;
+    }
+    listBox.innerHTML = `<div class="section-label" style="margin: 4px 0 10px 4px;">📦 UPDATE TERAKHIR</div>` +
+      progress.map(p => {
+        const tgl = p.timestamp ? new Date(p.timestamp).toLocaleString('id-ID') : '-';
+        return `
+          <div class="progress-item">
+            <div class="pi-material">${p.material}</div>
+            <div class="pi-qty">${p.jumlahActual || 0} <span>/ ${p.jumlahPlan || '-'} ${p.satuan || ''}</span></div>
+            <div class="pi-meta">
+              👤 ${p.petugas || '-'} · 🕒 ${tgl}
+              ${p.koordinat ? `<br>📍 ${p.koordinat}` : ''}
+            </div>
+            ${p.fotoUrl ? `<img class="pi-foto" src="${p.fotoUrl}">` : ''}
+            ${p.catatan ? `<div class="pi-catatan">📝 ${p.catatan}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+  }
+
+  function renderSelectedOrder() {
+    const box = document.getElementById('selectedOrderBox');
+    if (!selectedOrder) { box.innerHTML = ''; return; }
+    box.innerHTML = `
+      <div class="selected-order">
+        <div>
+          <div class="oid">${selectedOrder.namaProyek || '-'}</div>
+          <div class="oname">IHLD ${selectedOrder.orderId} · ${selectedOrder.noOrder || '-'}</div>
+        </div>
+        <button onclick="clearSelectedOrder()">Ganti</button>
+      </div>
+    `;
+  }
+
+  function clearSelectedOrder() {
+    selectedOrder = null;
+    renderSelectedOrder();
+  }
+
+  function addKabelRow() {
+    const wrap = document.createElement('div');
+    wrap.className = 'material-row';
+    wrap.innerHTML = `
+      <input type="text" class="mat-name-readonly" value="${selectedOrder.jenisKabel}" readonly data-material="${selectedOrder.jenisKabel}">
+      <input type="number" class="mat-actual" placeholder="Aktual" min="0">
+      <span class="slash">/</span>
+      <input type="number" class="mat-plan plan-input" value="${selectedOrder.panjangKabelPlan || ''}" readonly>
+      <span></span>
+    `;
+    document.getElementById('materialRows').appendChild(wrap);
+    ensureRowLabels();
+  }
+
+  function addMaterialRow() {
+    const wrap = document.createElement('div');
+    wrap.className = 'material-row';
+    const options = materialMaster.map(m => `<option value="${m.nama}" data-satuan="${m.satuan}">${m.nama}</option>`).join('');
+    wrap.innerHTML = `
+      <select class="mat-select">${options || '<option value="">Belum ada data material</option>'}</select>
+      <input type="number" class="mat-actual" placeholder="Aktual" min="0">
+      <span class="slash">/</span>
+      <input type="number" class="mat-plan plan-input" placeholder="-" readonly>
+      <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+    `;
+    document.getElementById('materialRows').appendChild(wrap);
+    ensureRowLabels();
+  }
+
+  function ensureRowLabels() {
+    if (document.getElementById('materialRowLabels')) return;
+    const labels = document.createElement('div');
+    labels.className = 'material-row-labels';
+    labels.id = 'materialRowLabels';
+    labels.innerHTML = `<span>Material</span><span>Aktual</span><span></span><span>Plan</span><span></span>`;
+    document.getElementById('materialRows').prepend(labels);
+  }
+
+  function getLocation() {
+    if (!navigator.geolocation) {
+      showToast('GPS tidak didukung di perangkat ini', 'error');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        coordinate = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+        document.getElementById('coordDisplay').textContent = coordinate;
+      },
+      err => showToast('Gagal ambil lokasi: ' + err.message, 'error'),
+      { enableHighAccuracy: true, timeout: 10000 }
     );
-  } else if (q.length > 0) {
-    return [];
-  } else {
-    rows = rows.slice(-20);
   }
 
-  return rows.map(r => ({
-    orderId: String(r[0]),
-    noOrder: r[1],
-    namaProyek: r[2],
-    district: r[3],
-    progressLapangan: r[4],
-    panjangKabelPlan: r[5],
-    jenisKabel: r[6]
-  }));
-}
-
-// Ambil daftar material dari Data Deploy, difilter sesuai kategori
-// Kolom Data Deploy: Kategori | NamaMaterial | Satuan | JenisMaterial
-function getDataDeploy(kategori) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_DATA_DEPLOY);
-  const values = sheet.getDataRange().getValues();
-  values.shift();
-
-  let rows = values.filter(r => r[1]); // ada NamaMaterial
-  if (kategori) {
-    rows = rows.filter(r => String(r[0]).trim() === kategori);
+  function onPhotoSelected(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      photoBase64 = reader.result;
+      const img = document.getElementById('photoPreview');
+      img.src = photoBase64;
+      img.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
   }
 
-  return rows.map(r => ({
-    kategori: r[0],
-    nama: r[1],
-    satuan: r[2],
-    jenis: r[3]
-  }));
-}
+  async function submitForm() {
+    if (!selectedKategori) {
+      showToast('Pilih kategori terlebih dahulu', 'error');
+      return;
+    }
+    if (!selectedOrder) {
+      showToast('Pilih Order ID terlebih dahulu', 'error');
+      return;
+    }
+    const rows = [...document.querySelectorAll('.material-row')];
+    const materials = rows.map(r => {
+      const readonlyInput = r.querySelector('.mat-name-readonly');
+      const sel = r.querySelector('.mat-select');
+      const nama = readonlyInput ? readonlyInput.dataset.material : (sel ? sel.value : '');
+      const satuan = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.satuan : (readonlyInput ? 'meter' : '');
+      const actual = r.querySelector('.mat-actual').value;
+      const plan = r.querySelector('.mat-plan').value;
+      return { nama, satuan, jumlahActual: actual, jumlahPlan: plan };
+    }).filter(m => m.nama && m.jumlahActual && Number(m.jumlahActual) > 0);
 
-function saveFotoToDrive(base64Data, orderId) {
-  const folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-  const matches = base64Data.match(/^data:(image\/\w+);base64,(.+)$/);
-  if (!matches) throw new Error('Format foto tidak valid');
-  const mimeType = matches[1];
-  const bytes = Utilities.base64Decode(matches[2]);
-  const ext = mimeType.split('/')[1] || 'jpg';
-  const blob = Utilities.newBlob(bytes, mimeType, `${orderId}_${Date.now()}.${ext}`);
-  const file = folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  return file.getUrl();
-}
+    if (!materials.length) {
+      showToast('Isi minimal 1 material dengan jumlah aktual > 0', 'error');
+      return;
+    }
 
-function jsonOutput(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Menyimpan...';
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          kategori: selectedKategori,
+          orderId: selectedOrder.orderId,
+          noOrder: selectedOrder.noOrder,
+          namaProyek: selectedOrder.namaProyek,
+          petugas: petugasName,
+          materials: materials,
+          koordinat: coordinate,
+          catatan: document.getElementById('catatan').value,
+          fotoBase64: photoBase64
+        })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Gagal menyimpan');
+
+      showToast(`Berhasil menyimpan ${data.itemsSaved} material`, 'success');
+      resetForm();
+    } catch (err) {
+      showToast('Gagal menyimpan: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Simpan Data Material';
+    }
+  }
+
+  function resetForm() {
+    selectedOrder = null;
+    coordinate = '';
+    photoBase64 = '';
+    renderSelectedOrder();
+    document.getElementById('coordDisplay').textContent = 'Belum diambil';
+    document.getElementById('photoPreview').style.display = 'none';
+    document.getElementById('photoInput').value = '';
+    document.getElementById('catatan').value = '';
+    document.getElementById('materialRows').innerHTML = '';
+    document.getElementById('orderSearch').value = '';
+    document.getElementById('orderResults').innerHTML = '';
+  }
+
+  function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + type;
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3000);
+  }
+
+  // App dimulai dari layar pilih mode (screenMode), nggak perlu init apapun di awal.
+</script>
+</body>
+</html>
