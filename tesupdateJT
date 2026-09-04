@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cek Progress JT</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #eef0f3;
+    --card: #ffffff;
+    --border: #e4e7ec;
+    --text: #1a1d23;
+    --text-dim: #7a8290;
+    --blue: #2f6fed;
+    --blue-dark: #1f52c9;
+    --green: #1fa971;
+    --amber: #d98a1f;
+    --red: #d64545;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 14px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .page-header { padding: 6px 4px 16px; display: flex; align-items: center; gap: 10px; }
+  .page-header h1 { font-size: 20px; margin: 0 0 2px; }
+  .page-header p { font-size: 13px; color: var(--text-dim); margin: 0; }
+  .back-btn {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    width: 36px; height: 36px; font-size: 16px; cursor: pointer; flex-shrink: 0;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .section-label {
+    font-size: 12px; font-weight: 700; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.03em;
+    display: flex; align-items: center; gap: 6px; margin-bottom: 12px;
+  }
+
+  .kategori-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .kategori-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 10px; text-align: center; cursor: pointer;
+  }
+  .kategori-card:active { background: #f5f6f8; }
+  .kategori-card .icon { font-size: 26px; margin-bottom: 8px; }
+  .kategori-card .label { font-weight: 700; font-size: 13.5px; }
+
+  input[type="text"] {
+    width: 100%; background: #f5f6f8; border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 11px 12px; font-size: 14px; font-family: inherit;
+  }
+  input::placeholder { color: #9aa1ad; }
+
+  .search-btn {
+    width: 100%; background: var(--blue); color: #fff; border: none;
+    border-radius: 10px; padding: 13px; font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    cursor: pointer; margin-top: 10px;
+  }
+  .search-btn:active { background: var(--blue-dark); }
+  .search-btn:disabled { background: #a8a8a8; }
+
+  .result-title { font-size: 15px; font-weight: 700; margin: 0 0 12px; line-height: 1.4; }
+  .info-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .k { color: var(--text-dim); flex-shrink: 0; }
+  .info-row .v { font-weight: 600; text-align: right; }
+  .info-row .v.accent { color: var(--blue); }
+
+  .hint { font-size: 12.5px; color: var(--text-dim); text-align: center; padding: 10px 0; }
+  .error-text { font-size: 13px; color: var(--red); text-align: center; padding: 10px 0; }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+  <!-- LAYAR 1: PILIH KATEGORI -->
+  <div id="screenKategori">
+    <div class="page-header">
+      <div>
+        <h1>👁️ Cek Progress JT</h1>
+        <p>Pilih kategori</p>
+      </div>
+    </div>
+    <div class="kategori-grid" id="kategoriGrid"></div>
+  </div>
+
+  <!-- LAYAR 2: SEARCH + HASIL -->
+  <div id="screenSearch" class="hidden">
+    <div class="page-header">
+      <button class="back-btn" onclick="backToKategori()">←</button>
+      <div>
+        <h1 id="searchTitle">👁️ Kategori</h1>
+        <p>Cari berdasarkan IHLD atau Nama Proyek</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">🔍 IHLD / NAMA PROYEK</div>
+      <input type="text" id="searchInput" placeholder="Contoh: 13319422 atau SMU OLO PT3..." onkeydown="if(event.key==='Enter') doSearch()">
+      <button class="search-btn" id="searchBtn" onclick="doSearch()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Search
+      </button>
+    </div>
+
+    <div class="card" id="resultCard" style="display:none;"></div>
+  </div>
+
+<script>
+  // ==== GANTI dengan URL Web App hasil deploy Code_CekProgress.gs ====
+  const CEK_PROGRESS_API_URL = 'https://script.google.com/macros/s/AKfycbyLK3Q2bLU8M8PB8Q5Rcj0V0suuLSakPANWwGUfZ8E8eLcb1HFEiChH3VkrndBNT7Mgkw/exec';
+
+  const KATEGORI_ICONS = {
+    'OLO': '🌐', 'HEM': '🔌', 'PT3 UNDER TA': '🗼', 'PT3 UNDER FH': '📡', 'MBB': '📶'
+  };
+
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+
+  let selectedKategori = null;
+
+  function initKategoriScreen() {
+    const grid = document.getElementById('kategoriGrid');
+    grid.innerHTML = Object.keys(KATEGORI_ICONS).map(k => `
+      <div class="kategori-card" onclick="selectKategori('${k}')">
+        <div class="icon">${KATEGORI_ICONS[k]}</div>
+        <div class="label">${k}</div>
+      </div>
+    `).join('');
+  }
+
+  function selectKategori(kategori) {
+    selectedKategori = kategori;
+    document.getElementById('searchTitle').textContent = `${KATEGORI_ICONS[kategori]} ${kategori}`;
+    document.getElementById('screenKategori').classList.add('hidden');
+    document.getElementById('screenSearch').classList.remove('hidden');
+    document.getElementById('searchInput').value = '';
+    document.getElementById('resultCard').style.display = 'none';
+  }
+
+  function backToKategori() {
+    document.getElementById('screenSearch').classList.add('hidden');
+    document.getElementById('screenKategori').classList.remove('hidden');
+    selectedKategori = null;
+  }
+
+  async function doSearch() {
+    const q = document.getElementById('searchInput').value.trim();
+    const resultCard = document.getElementById('resultCard');
+
+    if (!q) {
+      resultCard.style.display = 'block';
+      resultCard.innerHTML = `<div class="hint">Isi IHLD atau Nama Proyek dulu.</div>`;
+      return;
+    }
+
+    const btn = document.getElementById('searchBtn');
+    btn.disabled = true;
+    btn.textContent = 'Mencari...';
+    resultCard.style.display = 'block';
+    resultCard.innerHTML = `<div class="hint">Mencari...</div>`;
+
+    try {
+      const url = `${CEK_PROGRESS_API_URL}?action=search&kategori=${encodeURIComponent(selectedKategori)}&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      renderResult(json.data);
+    } catch (err) {
+      resultCard.innerHTML = `<div class="error-text">Gagal mencari: ${err.message}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>Search`;
+    }
+  }
+
+  function renderResult(data) {
+    const resultCard = document.getElementById('resultCard');
+    if (!data) {
+      resultCard.innerHTML = `<div class="hint">Tidak ditemukan. Coba IHLD atau kata kunci lain.</div>`;
+      return;
+    }
+    resultCard.innerHTML = `
+      <div class="result-title">${data.namaProyek}</div>
+      <div class="info-row"><span class="k">Status</span><span class="v">${data.status}</span></div>
+      <div class="info-row"><span class="k">Sub Status</span><span class="v">${data.subStatus}</span></div>
+      <div class="info-row"><span class="k">Detail Status</span><span class="v">${data.detailStatus}</span></div>
+      <div class="info-row"><span class="k">Komitmen Golive</span><span class="v accent">${data.komitmenGolive}</span></div>
+    `;
+  }
+
+  initKategoriScreen();
+</script>
+</body>
+</html>
