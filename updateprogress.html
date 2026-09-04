@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Input Progress</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #eef0f3;
+    --card: #ffffff;
+    --border: #e4e7ec;
+    --text: #1a1d23;
+    --text-dim: #7a8290;
+    --blue: #2f6fed;
+    --blue-dark: #1f52c9;
+    --green: #1fa971;
+    --amber: #d98a1f;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 14px;
+    max-width: 480px;
+    margin: 0 auto;
+    padding-bottom: 90px;
+  }
+  .page-header { padding: 6px 4px 16px; display: flex; align-items: center; gap: 10px; }
+  .page-header h1 { font-size: 20px; margin: 0 0 2px; }
+  .page-header p { font-size: 13px; color: var(--text-dim); margin: 0; }
+  .back-btn {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    width: 36px; height: 36px; font-size: 16px; cursor: pointer; flex-shrink: 0;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .kategori-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .kategori-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 10px;
+    text-align: center;
+    cursor: pointer;
+  }
+  .kategori-card:active { background: #f5f6f8; }
+  .kategori-card .icon { font-size: 26px; margin-bottom: 8px; }
+  .kategori-card .label { font-weight: 700; font-size: 14px; }
+
+  .selected-order {
+    background: #eef4ff;
+    border: 1px solid #cfe0fd;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .selected-order .oid { font-weight: 700; font-size: 13.5px; }
+  .selected-order .oname { font-size: 12px; color: var(--text-dim); }
+  .selected-order button {
+    background: none; border: none; color: var(--blue);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+
+  input[type="text"], textarea, select {
+    width: 100%;
+    background: #f5f6f8;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 11px 12px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  input::placeholder, textarea::placeholder { color: #9aa1ad; }
+  textarea { resize: vertical; min-height: 60px; }
+
+  .order-results { margin-top: 8px; }
+  .order-item {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .order-item:last-child { border-bottom: none; }
+  .order-item:active { background: #f5f6f8; }
+  .order-item .oid { font-weight: 700; font-size: 13px; }
+  .order-item .ometa { font-size: 11.5px; color: var(--text-dim); }
+  .order-item .badge {
+    font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+  }
+  .badge.assigned { background: #fdf1de; color: var(--amber); }
+
+  .hint { font-size: 11.5px; color: var(--text-dim); margin-top: 8px; }
+
+  .material-row {
+    display: grid;
+    grid-template-columns: 1fr 55px 14px 55px 30px;
+    gap: 6px;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .material-row select { font-size: 12.5px; }
+  .material-row input { text-align: center; font-size: 13px; padding: 11px 6px; }
+  .material-row .slash { text-align: center; color: var(--text-dim); font-size: 13px; }
+  .material-row input.plan-input {
+    background: #eef4ff;
+    color: var(--text-dim);
+  }
+  .material-row .mat-name-readonly {
+    background: #f5f6f8;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 11px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .material-row-labels {
+    display: grid;
+    grid-template-columns: 1fr 55px 14px 55px 30px;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .material-row-labels span {
+    font-size: 9.5px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    text-align: center;
+  }
+  .material-row-labels span:first-child { text-align: left; }
+  .remove-btn {
+    background: #fdeaea; color: #d64545; border: none;
+    border-radius: 8px; width: 30px; height: 38px; font-size: 16px; cursor: pointer;
+  }
+  .add-material-btn {
+    width: 100%;
+    background: #eef4ff;
+    color: var(--blue);
+    border: 1px dashed #b9d1fb;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+
+  .gps-btn {
+    width: 100%;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 13px;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .gps-btn:active { background: var(--blue-dark); }
+  .coord-display {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 13px;
+    color: var(--text-dim);
+    background: #f5f6f8;
+    border-radius: 8px;
+    padding: 9px 12px;
+  }
+
+  .photo-upload {
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  .photo-preview {
+    width: 100%;
+    border-radius: 10px;
+    margin-top: 10px;
+    display: none;
+  }
+
+  .submit-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--bg);
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+  }
+  .submit-btn {
+    max-width: 452px;
+    margin: 0 auto;
+    width: 100%;
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 15px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: block;
+  }
+  .submit-btn:disabled { background: #a8a8a8; }
+  .submit-btn:active:not(:disabled) { transform: scale(0.99); }
+
+  .toast {
+    position: fixed;
+    top: 14px; left: 14px; right: 14px;
+    max-width: 452px;
+    margin: 0 auto;
+    background: #1a1d23;
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    text-align: center;
+    z-index: 100;
+    display: none;
+  }
+  .toast.error { background: #d64545; }
+  .toast.success { background: var(--green); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- LAYAR 1: PILIH KATEGORI -->
+  <div id="screenKategori">
+    <div class="page-header">
+      <button class="back-btn" onclick="window.location.href='HalamanDepan.html'">←</button>
+      <div>
+        <h1>✏️ Input Progress</h1>
+        <p>Pilih kategori</p>
+      </div>
+    </div>
+    <div class="kategori-grid" id="kategoriGrid"></div>
+  </div>
+
+  <!-- LAYAR 2: FORM -->
+  <div id="screenForm" class="hidden">
+    <div class="page-header">
+      <button class="back-btn" onclick="backToKategori()">←</button>
+      <div>
+        <h1 id="formTitle">📋 Input Progress</h1>
+        <p>Catat pemakaian material per Order ID</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">📎 ORDER ID</div>
+      <div id="selectedOrderBox"></div>
+      <input type="text" id="orderSearch" placeholder="Cari IHLD / No Order / Nama Proyek (min. 3 huruf)" oninput="onSearchOrder()">
+      <div class="order-results" id="orderResults"></div>
+      <div class="hint">Ketik minimal 3 huruf (bisa cari pakai IHLD, No Order, atau Nama Proyek), atau pilih dari daftar order terbaru.</div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">📦 UPDATE MATERIAL</div>
+      <div id="materialRows"></div>
+      <button class="add-material-btn" onclick="addMaterialRow()">+ Tambah Material</button>
+    </div>
+
+    <div class="card">
+      <div class="section-label">📍 LOKASI (OPSIONAL)</div>
+      <button class="gps-btn" onclick="getLocation()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        Gunakan lokasi saya
+      </button>
+      <div class="coord-display" id="coordDisplay">Belum diambil</div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">📷 FOTO BUKTI (OPSIONAL)</div>
+      <label class="photo-upload" for="photoInput" id="photoLabel">
+        Ketuk untuk ambil / pilih foto
+        <img class="photo-preview" id="photoPreview">
+      </label>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoSelected(event)">
+    </div>
+
+    <div class="card">
+      <div class="section-label">📝 CATATAN (OPSIONAL)</div>
+      <textarea id="catatan" placeholder="Catatan tambahan..."></textarea>
+    </div>
+
+    <div class="submit-bar">
+      <button class="submit-btn" id="submitBtn" onclick="submitForm()">Simpan Data Material</button>
+    </div>
+  </div>
+
+<script>
+  // ==== GANTI dengan URL Web App hasil deploy Code_Material.gs ====
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxLzMxO7gW96DL4SvoJbMz3UwqJcKWkg0HVBDKrjOrVfJHsIn6V5BIARffIXFLkxk-x/exec';
+
+  const KATEGORI_ICONS = {
+    'OLO': '🌐', 'HEM': '🔌', 'PT3 UNDER TA': '🗼', 'PT3 UNDER FH': '📡', 'MBB': '📶'
+  };
+
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+  const petugasName = tg && tg.initDataUnsafe && tg.initDataUnsafe.user
+    ? `${tg.initDataUnsafe.user.first_name || ''} ${tg.initDataUnsafe.user.last_name || ''}`.trim()
+    : 'Petugas';
+
+  let selectedKategori = null;
+  let materialMaster = [];
+  let selectedOrder = null;
+  let coordinate = '';
+  let photoBase64 = '';
+  let searchTimeout = null;
+
+  function initKategoriScreen() {
+    const grid = document.getElementById('kategoriGrid');
+    grid.innerHTML = Object.keys(KATEGORI_ICONS).map(k => `
+      <div class="kategori-card" onclick="selectKategori('${k}')">
+        <div class="icon">${KATEGORI_ICONS[k]}</div>
+        <div class="label">${k}</div>
+      </div>
+    `).join('');
+  }
+
+  async function selectKategori(kategori) {
+    selectedKategori = kategori;
+    document.getElementById('formTitle').textContent = `📋 ${kategori}`;
+    document.getElementById('screenKategori').classList.add('hidden');
+    document.getElementById('screenForm').classList.remove('hidden');
+    resetForm();
+
+    try {
+      const res = await fetch(`${API_URL}?action=get_materials&kategori=${encodeURIComponent(kategori)}`);
+      const data = await res.json();
+      materialMaster = data.materials || [];
+    } catch (err) {
+      showToast('Gagal memuat daftar material: ' + err.message, 'error');
+    }
+  }
+
+  function backToKategori() {
+    document.getElementById('screenForm').classList.add('hidden');
+    document.getElementById('screenKategori').classList.remove('hidden');
+    selectedKategori = null;
+  }
+
+  function onSearchOrder() {
+    clearTimeout(searchTimeout);
+    const q = document.getElementById('orderSearch').value;
+    searchTimeout = setTimeout(() => searchOrder(q), 350);
+  }
+
+  async function searchOrder(q) {
+    const box = document.getElementById('orderResults');
+    if (q.trim().length > 0 && q.trim().length < 3) {
+      box.innerHTML = '';
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}?action=search_order&kategori=${encodeURIComponent(selectedKategori)}&q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      renderOrderResults(data.orders || []);
+    } catch (err) {
+      showToast('Gagal mencari order: ' + err.message, 'error');
+    }
+  }
+
+  function renderOrderResults(orders) {
+    const box = document.getElementById('orderResults');
+    if (!orders.length) {
+      box.innerHTML = `<div class="hint">Tidak ada order ditemukan.</div>`;
+      return;
+    }
+    box.innerHTML = orders.map((o, i) => `
+      <div class="order-item" onclick="selectOrder(${i})">
+        <div>
+          <div class="oid">${o.namaProyek || '-'}</div>
+          <div class="ometa">IHLD ${o.orderId} · ${o.noOrder || '-'} · ${o.district || '-'}</div>
+        </div>
+        <span class="badge assigned">${o.progressLapangan || '-'}</span>
+      </div>
+    `).join('');
+    window._orderResultsCache = orders;
+  }
+
+  function selectOrder(i) {
+    selectedOrder = window._orderResultsCache[i];
+    document.getElementById('orderResults').innerHTML = '';
+    document.getElementById('orderSearch').value = '';
+    renderSelectedOrder();
+
+    document.getElementById('materialRows').innerHTML = '';
+    if (selectedOrder.jenisKabel) {
+      addKabelRow();
+    }
+  }
+
+  function renderSelectedOrder() {
+    const box = document.getElementById('selectedOrderBox');
+    if (!selectedOrder) { box.innerHTML = ''; return; }
+    box.innerHTML = `
+      <div class="selected-order">
+        <div>
+          <div class="oid">${selectedOrder.namaProyek || '-'}</div>
+          <div class="oname">IHLD ${selectedOrder.orderId} · ${selectedOrder.noOrder || '-'}</div>
+        </div>
+        <button onclick="clearSelectedOrder()">Ganti</button>
+      </div>
+    `;
+  }
+
+  function clearSelectedOrder() {
+    selectedOrder = null;
+    renderSelectedOrder();
+  }
+
+  function addKabelRow() {
+    const wrap = document.createElement('div');
+    wrap.className = 'material-row';
+    wrap.innerHTML = `
+      <input type="text" class="mat-name-readonly" value="${selectedOrder.jenisKabel}" readonly data-material="${selectedOrder.jenisKabel}">
+      <input type="number" class="mat-actual" placeholder="Aktual" min="0">
+      <span class="slash">/</span>
+      <input type="number" class="mat-plan plan-input" value="${selectedOrder.panjangKabelPlan || ''}" readonly>
+      <span></span>
+    `;
+    document.getElementById('materialRows').appendChild(wrap);
+    ensureRowLabels();
+  }
+
+  function addMaterialRow() {
+    const wrap = document.createElement('div');
+    wrap.className = 'material-row';
+    const options = materialMaster.map(m => `<option value="${m.nama}" data-satuan="${m.satuan}">${m.nama}</option>`).join('');
+    wrap.innerHTML = `
+      <select class="mat-select">${options || '<option value="">Belum ada data material</option>'}</select>
+      <input type="number" class="mat-actual" placeholder="Aktual" min="0">
+      <span class="slash">/</span>
+      <input type="number" class="mat-plan plan-input" placeholder="-" readonly>
+      <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+    `;
+    document.getElementById('materialRows').appendChild(wrap);
+    ensureRowLabels();
+  }
+
+  function ensureRowLabels() {
+    if (document.getElementById('materialRowLabels')) return;
+    const labels = document.createElement('div');
+    labels.className = 'material-row-labels';
+    labels.id = 'materialRowLabels';
+    labels.innerHTML = `<span>Material</span><span>Aktual</span><span></span><span>Plan</span><span></span>`;
+    document.getElementById('materialRows').prepend(labels);
+  }
+
+  function getLocation() {
+    if (!navigator.geolocation) {
+      showToast('GPS tidak didukung di perangkat ini', 'error');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        coordinate = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+        document.getElementById('coordDisplay').textContent = coordinate;
+      },
+      err => showToast('Gagal ambil lokasi: ' + err.message, 'error'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  function onPhotoSelected(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      photoBase64 = reader.result;
+      const img = document.getElementById('photoPreview');
+      img.src = photoBase64;
+      img.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function submitForm() {
+    if (!selectedKategori) {
+      showToast('Pilih kategori terlebih dahulu', 'error');
+      return;
+    }
+    if (!selectedOrder) {
+      showToast('Pilih Order ID terlebih dahulu', 'error');
+      return;
+    }
+    const rows = [...document.querySelectorAll('.material-row')];
+    const materials = rows.map(r => {
+      const readonlyInput = r.querySelector('.mat-name-readonly');
+      const sel = r.querySelector('.mat-select');
+      const nama = readonlyInput ? readonlyInput.dataset.material : (sel ? sel.value : '');
+      const satuan = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.satuan : (readonlyInput ? 'meter' : '');
+      const actual = r.querySelector('.mat-actual').value;
+      const plan = r.querySelector('.mat-plan').value;
+      return { nama, satuan, jumlahActual: actual, jumlahPlan: plan };
+    }).filter(m => m.nama && m.jumlahActual && Number(m.jumlahActual) > 0);
+
+    if (!materials.length) {
+      showToast('Isi minimal 1 material dengan jumlah aktual > 0', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Menyimpan...';
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          kategori: selectedKategori,
+          orderId: selectedOrder.orderId,
+          noOrder: selectedOrder.noOrder,
+          namaProyek: selectedOrder.namaProyek,
+          petugas: petugasName,
+          materials: materials,
+          koordinat: coordinate,
+          catatan: document.getElementById('catatan').value,
+          fotoBase64: photoBase64
+        })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Gagal menyimpan');
+
+      showToast(`Berhasil menyimpan ${data.itemsSaved} material`, 'success');
+      resetForm();
+    } catch (err) {
+      showToast('Gagal menyimpan: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Simpan Data Material';
+    }
+  }
+
+  function resetForm() {
+    selectedOrder = null;
+    coordinate = '';
+    photoBase64 = '';
+    renderSelectedOrder();
+    document.getElementById('coordDisplay').textContent = 'Belum diambil';
+    document.getElementById('photoPreview').style.display = 'none';
+    document.getElementById('photoInput').value = '';
+    document.getElementById('catatan').value = '';
+    document.getElementById('materialRows').innerHTML = '';
+    document.getElementById('orderSearch').value = '';
+    document.getElementById('orderResults').innerHTML = '';
+  }
+
+  function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + type;
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3000);
+  }
+
+  initKategoriScreen();
+</script>
+</body>
+</html>
